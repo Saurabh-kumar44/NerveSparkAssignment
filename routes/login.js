@@ -17,9 +17,10 @@ mongoose.connect('', {
 })
 
 
-const authForAll = async(password,data) =>{
+const authForAll = async(password,data,id) =>{
   const validPassword = await bcrypt.compare(password, data.password);
-  const token = jwt.sign({ userId: User._id }, process.env.JWT_SECRET);
+  if(!validPassword)return res.status(400).send("Invalid Credetials");
+  const token = jwt.sign({ identifierId: id}, process.env.JWT_SECRET);
   return token;
 }
 
@@ -33,48 +34,30 @@ router.post('/', async (req, res) => {
     const user= await UserModel.findOne({ user_email:identifier}); 
     const dealership = await AdminModel.findOne({ dealership_email:identifier});
     const admin = await DealershipModel.findOne({ admin_id:identifier});
-    let authToken
-    if(!user && !dealership){
-     authToken = authForAll(password,admin);
+    let authToken;
+    let redirect;
+    let id;
+    if(admin){ 
+    id = admin.admin_id;
+    authToken = authForAll(password,admin,id);
+    redirect = admin
+    }
+    else if(user){
+      id = user.user_id;
+      authToken = authForAll(password,user);
+      redirect = user;
+    }
+    else if(dealership){
+      id = dealership.dealership_id;
+      authToken = authForAll(password,user);
+      redirect= dealership
+    }
+    else{
+      return res.status(401).send({ error: 'Invalid emai or password.' });
     }
 
     res.cookie('token', authToken, { httpOnly: true });
-     res.redirect('/admin');
-
-    // Find user by email
-    const User = await UserModel.findOne({ email: req.body.email });
-    if (!user) {
-      return res.status(401).send({ error: 'Invalid email or password.' });
-    }
-
-    // Check if user is an admin
-    if(user.isAdmin){
-      // Compare admin password hash
-      const validPassword = await bcrypt.compare(req.body.password, user.password);
-      if (!validPassword) {
-        return res.status(401).send({ error: 'Invalid email or password.'});
-      }
-
-      // Generate JWT token for admin user
-      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
-
-      // Redirect to the admin profile page with the jwt token
-      res.cookie('token', token, { httpOnly: true });
-      res.redirect('/admin');
-    } else {
-      // Compare regular user password hash
-      const validPassword = await bcrypt.compare(req.body.password, user.password);
-      if (!validPassword) {
-        return res.status(401).send({ error: 'Invalid email or password.' });
-      }
-
-      // Generate JWT token for regular user
-      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
-
-      // Redirect to the regular user profile page with the jwt token
-      res.cookie('token', token, { httpOnly: true });
-      res.redirect('/index');
-    }
+    res.redirect(`/${redirect}`);
   } catch (err) {
     // Handle any errors that occur during login
     res.status(500).send();
